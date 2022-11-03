@@ -2,7 +2,7 @@ from distutils.core import setup
 setup(
   name = 'monday_lib',         
   packages = ['monday_lib'],  
-  version = '0.1',      
+  version = '0.2',      
   license='GNU GPLv3',        
   description = 'monday_lib is a wrapper for Monday.com API library, every endpoint is made into Python here. Everything you need to get started is your Monday.com API key.', 
   author = 'Frederich Pedersen',                  

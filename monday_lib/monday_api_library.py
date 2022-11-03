@@ -1,3 +1,8 @@
+from collections import OrderedDict
+from optparse import IndentedHelpFormatter
+from tracemalloc import start
+from django.forms import CheckboxInput
+from more_itertools import all_equal
 import requests
 import re
 import time
@@ -39,10 +44,12 @@ class monday_endpoints:
 
             if request.status_code == 403:
                 raise Exception("User is not authorized")
+            elif request.status_code == 401:
+                raise Exception("API key is not correct.")
             elif request.status_code == 429:
                 raise Exception("Rate limit exceeded, some requests may have an extra rate limit.")
-            elif 'error_code' in request.json():
-                raise Exception("Error: " + request.json()['error_message'])
+            elif request.status_code == 400:
+                raise Exception("Error: " + request.json()['error_data'])
 
             if 'query' in body and not "me" in request.json()['data'].keys() and not "account" in request.json()['data'].keys():
                 data_in_request = self.get_data(request.json())
@@ -96,9 +103,10 @@ class monday_endpoints:
         """
         items_not_to_unpack = [
             "items",
-            "replies"
+            "replies",
+            "column_values"
         ]
-
+        
         for key in data_dict:
             if type(data_dict[key]) == dict:
                 self.get_data(data_dict[key])
@@ -125,6 +133,8 @@ class monday_endpoints:
         parameters_string = ""
         for key, parameter in parameter_dict.items():
             parameter = str(parameter).replace('"','\\"')
+            if parameter == "True" or parameter == "False":
+                parameter = parameter.lower()
             if list(parameter_dict.keys()).index(key) == len(parameter_dict) - 1:
                 if " " in str(parameter) or key in string_keys:
                     parameters_string += f"{key}:\"{parameter}\""
@@ -173,7 +183,9 @@ class monday_endpoints:
 
     def create_board(self, board_name, board_kind, board_folder_id=None, workspace_id=None, template_id=None, board_owner_ids=[], board_subscriber_ids=[]):
         """
-        Create board in Monday, if you are using some parameters and not others please use the parameter name like: create_board("Name", "Public", template_id=12312)
+        Create board in Monday, if you are using some parameters and not others please use the parameter name like: create_board("Name", "public", template_id=12312)\n
+        board_kind is one of which: public, private, or share\n
+        If template_id it must be a account template.
         """
         parameter_dict = {
                 "board_name":board_name,
@@ -182,7 +194,7 @@ class monday_endpoints:
                 "workspace_id":workspace_id,
                 "template_id":template_id,
                 "board_owner_ids":board_owner_ids,
-                "board_subscribers_ids":board_subscriber_ids
+                "board_subscriber_ids":board_subscriber_ids
                 }
         
         request_body = self.put_parameter("mutation { create_board () { id }}", "create_board", parameter_dict)
@@ -317,7 +329,7 @@ class monday_endpoints:
         parameter_dictionary = {
             "item_id":item_id,
             "board_id":board_id,
-            "column_values":column_values.replace('"','\\"')
+            "column_values":column_values.replace('"','\"')
         }
 
         request_body = self.put_parameter("mutation { change_multiple_column_values () { id }}","change_multiple_column_values", parameter_dictionary)
@@ -362,7 +374,7 @@ class monday_endpoints:
         Get board items and their column values.
         """
 
-        request_body = "query { boards (ids: " + str(board_id) + ") { items { id, name, creator_id, name, state, updated_at column_values { id title value }}}}"
+        request_body = "query { boards (ids: " + str(board_id) + ",limit:25, page:0) { items { id, name, creator_id, name, state, updated_at column_values { id title value } group { id title }}}}"
         get_board_items_request = self.make_request(request_body)
         return get_board_items_request
 
@@ -424,6 +436,15 @@ class monday_endpoints:
         move_item_to_group_request = self.make_request(request_body)
         return move_item_to_group_request
     
+    def get_item(self, item_id):
+        """
+        Gets a item by id.
+        """
+
+        request_body = "query { items (ids: " + str(item_id) + ") { id, name, creator_id, name, state, updated_at column_values { id title value } group { id title }}}"
+        get_item_request = self.make_request(request_body)
+        return get_item_request
+
     def archive_item(self, item_id):
         """
         Archives an item.
