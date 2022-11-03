@@ -8,7 +8,7 @@ setup(
   author = 'Frederich Pedersen',                  
   author_email = 'frodo@hobbits.dk',      
   url = 'https://github.com/Frodothedwarf/monday_lib',   
-  download_url = 'https://github.com/Frodothedwarf/monday_lib/archive/refs/tags/v_01.tar.gz',    
+  download_url = 'https://github.com/Frodothedwarf/monday_lib/archive/refs/tags/v_02.tar.gz',    
   keywords = ['monday', 'api', 'wrapper','endpoint','endpoints','monday.com'],   
   install_requires=[
           'requests',
