@@ -1,20 +1,18 @@
-from collections import OrderedDict
-from optparse import IndentedHelpFormatter
-from tracemalloc import start
-from django.forms import CheckboxInput
-from more_itertools import all_equal
 import requests
 import re
 import time
+import logging
 
 class monday_endpoints:
-    def __init__(self, api_secret, wait_for_complexity=False):
+    def __init__(self, api_secret, wait_for_complexity=False, logging_file=None):
         self.secret = api_secret
         self.complexity_wait = wait_for_complexity
         self.complexity_points = 10000000
         self.requests_reset = 60
         self.complexity_retries = 0
         self.real_data_dict = []
+        if logging_file:
+            logging.basicConfig(filename=logging_file, encoding="utf-8",level=0)
     
     def make_request(self, body, get_raw_request=False):
         """
@@ -32,25 +30,31 @@ class monday_endpoints:
 
         while self.if_next_page(body, request):
             body = self.determine_next_page(body)
-            if self.complexity_points <= 20000:
+            if self.complexity_points <= 1000:
                 time.sleep(self.requests_reset)
-            
-            request = requests.post("https://api.monday.com/v2", headers={
-                "Authorization":self.secret,
-                "Content-Type":"application/json"
-            }, json={
-                "query":str(body)
-            })
+            while True:
+                request = requests.post("https://api.monday.com/v2", headers={
+                    "Authorization":self.secret,
+                    "Content-Type":"application/json"
+                }, json={
+                    "query":str(body)
+                })
 
-            if request.status_code == 403:
-                raise Exception("User is not authorized")
-            elif request.status_code == 401:
-                raise Exception("API key is not correct.")
-            elif request.status_code == 429:
-                raise Exception("Rate limit exceeded, some requests may have an extra rate limit.")
-            elif request.status_code == 400:
-                raise Exception("Error: " + request.json()['error_data'])
-
+                if request.status_code == 403:
+                    logging.critical("API user is not authorized.")
+                    raise Exception("User is not authorized")
+                elif request.status_code == 401:
+                    logging.critical("API User key is not correct.")
+                    raise Exception("API key is not correct.")
+                elif request.status_code == 429:
+                    logging.warning("Rate Limited, waiting 60 seconds.")
+                    time.sleep(60)
+                elif request.status_code == 400:
+                    logging.warning("Error: " + request.json()['error_data'])
+                    raise Exception("Error: " + request.json()['error_data'])
+                else:
+                    break
+            logging.debug('Request: ' + str(request.json()))
             if 'query' in body and not "me" in request.json()['data'].keys() and not "account" in request.json()['data'].keys():
                 data_in_request = self.get_data(request.json())
                 dataList.extend(data_in_request)
@@ -175,7 +179,7 @@ class monday_endpoints:
         """
         Gets all boards the user has access to.
         """
-        board_request = self.make_request("query { boards (limit:25, page:0) { id name state board_folder_id workspace_id owner { id }}}")
+        board_request = self.make_request("query { boards (limit:25, page:0) { id name state board_folder_id workspace_id owner { id } type }}")
             
         if workspace_id:
             board_request = [x for x in board_request if x['workspace_id'] == workspace_id]
@@ -374,7 +378,7 @@ class monday_endpoints:
         Get board items and their column values.
         """
 
-        request_body = "query { boards (ids: " + str(board_id) + ",limit:25, page:0) { items { id, name, creator_id, name, state, updated_at column_values { id title value } group { id title }}}}"
+        request_body = "query { boards (ids: " + str(board_id) + ",limit:25, page:0) { items { id, name, creator_id, name, state, updated_at column_values { id title value text } group { id title }}}}"
         get_board_items_request = self.make_request(request_body)
         return get_board_items_request
 
@@ -424,7 +428,7 @@ class monday_endpoints:
         Gets all groups in a board.
         """
 
-        get_board_groups_request = self.make_request("query { boards (ids: " + str(board_id) + ") { groups { id title }}}")
+        get_board_groups_request = self.make_request("query { boards (ids: " + str(board_id) + ") { groups { id color title }}}")
         return get_board_groups_request
 
     def move_item_to_group(self, item_id, group_id):
