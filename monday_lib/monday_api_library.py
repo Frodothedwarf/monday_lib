@@ -35,7 +35,8 @@ class monday_endpoints:
             while True:
                 request = requests.post("https://api.monday.com/v2", headers={
                     "Authorization":self.secret,
-                    "Content-Type":"application/json"
+                    "Content-Type":"application/json",
+                    "API-Version":"2023-07"
                 }, json={
                     "query":str(body)
                 })
@@ -110,9 +111,13 @@ class monday_endpoints:
             "replies",
             "column_values"
         ]
+
+        headers_not_to_unpack = [
+            "extensions"
+        ]
         
         for key in data_dict:
-            if type(data_dict[key]) == dict:
+            if type(data_dict[key]) == dict and key not in headers_not_to_unpack:
                 self.get_data(data_dict[key])
             elif type(data_dict[key]) == list:
                 self.real_data_dict = data_dict[key]
@@ -179,7 +184,7 @@ class monday_endpoints:
         """
         Gets all boards the user has access to.
         """
-        board_request = self.make_request("query { boards (limit:25, page:0) { id name state board_folder_id workspace_id owner { id } type }}")
+        board_request = self.make_request("query { boards (limit:25, page:0) { id name state board_folder_id workspace_id creator { id } type }}")
             
         if workspace_id:
             board_request = [x for x in board_request if x['workspace_id'] == workspace_id]
@@ -213,12 +218,12 @@ class monday_endpoints:
         archive_board_request = self.make_request(request_body)
         return archive_board_request
     
-    def add_subscribers_to_board(self, board_id, user_ids, kind):
+    def add_users_to_board(self, board_id, user_ids, kind):
         """
         Add subscribers to board.\n
         user_ids is a list.
         """
-        request_body = self.put_parameter("mutation { add_subscribers_to_board () { id } }", "add_subscribers_to_board",{"board_id":board_id, "user_ids":user_ids, "kind":kind})
+        request_body = self.put_parameter("mutation { add_users_to_board () { id } }", "add_users_to_board",{"board_id":board_id, "user_ids":user_ids, "kind":kind})
         add_subscribers_to_board_request = self.make_request(request_body)
         return add_subscribers_to_board_request
 
