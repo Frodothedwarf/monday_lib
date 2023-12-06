@@ -4,9 +4,10 @@ import time
 import logging
 
 class monday_endpoints:
-    def __init__(self, api_secret, wait_for_complexity=False, logging_file=None):
+    def __init__(self, api_secret, wait_for_complexity=False, logging_file=None, api_version="2023-10"):
         self.secret = api_secret
         self.complexity_wait = wait_for_complexity
+        self.api_version = api_version
         self.complexity_points = 10000000
         self.requests_reset = 60
         self.complexity_retries = 0
@@ -36,11 +37,11 @@ class monday_endpoints:
                 request = requests.post("https://api.monday.com/v2", headers={
                     "Authorization":self.secret,
                     "Content-Type":"application/json",
-                    "API-Version":"2023-07"
+                    "API-Version":self.api_version
                 }, json={
                     "query":str(body)
                 })
-
+                #print(request.json())
                 if request.status_code == 403:
                     logging.critical("API user is not authorized.")
                     raise Exception("User is not authorized")
@@ -184,10 +185,16 @@ class monday_endpoints:
         """
         Gets all boards the user has access to.
         """
-        board_request = self.make_request("query { boards (limit:25, page:0) { id name state board_folder_id workspace_id creator { id } type }}")
-            
+        if self.api_version == "2023-10":
+            if workspace_id:
+                board_request = self.make_request("query { boards (workspace_ids:"+ str(workspace_id) +", limit:25, page:0) { id name state board_folder_id workspace_id creator { id } type }}")
+            else:
+                board_request = self.make_request("query { boards (limit:25, page:0) { id name state board_folder_id workspace_id creator { id } type }}")
+        else:
+            board_request = self.make_request("query { boards (limit:25, page:0) { id name state board_folder_id workspace_id creator { id } type }}")
+
         if workspace_id:
-            board_request = [x for x in board_request if x['workspace_id'] == workspace_id]
+            board_request = [x for x in board_request if str(x['workspace_id']) == str(workspace_id)]
         return board_request
 
     def create_board(self, board_name, board_kind, board_folder_id=None, workspace_id=None, template_id=None, board_owner_ids=[], board_subscriber_ids=[]):
@@ -383,9 +390,39 @@ class monday_endpoints:
         Get board items and their column values.
         """
 
-        request_body = "query { boards (ids: " + str(board_id) + ",limit:25, page:0) { items { id, name, creator_id, name, state, updated_at column_values { id title value text } group { id title }}}}"
-        get_board_items_request = self.make_request(request_body)
-        return get_board_items_request
+        if self.api_version == "2023-10":
+            itemList = []
+            cursor = None
+            first_request = True
+            while True:
+                request = requests.post("https://api.monday.com/v2", headers={
+                        "Authorization":self.secret,
+                        "Content-Type":"application/json",
+                        "API-Version":self.api_version
+                    }, json={
+                        "query":"query { boards (ids: " + str(board_id) + ") { items_page (limit: 250) { cursor items { id name creator_id name state updated_at column_values { id column { title } value text } group { id title }}}}}" if cursor == None else "query { next_items_page (limit: 10, cursor: \"" + cursor + "\") { cursor items { id name creator_id name state updated_at column_values { id column { title } value text } group { id title }}}}"
+                    })
+
+                if first_request == True:
+                    cursor = request.json()['data']['boards'][0]['items_page']['cursor']
+                    items = request.json()['data']['boards'][0]['items_page']['items'] 
+                else:
+                    cursor = request.json()['data']['next_items_page']['cursor']
+                    items = request.json()['data']['next_items_page']['items']
+
+                
+                itemList.extend(items)
+
+                first_request = False
+                if cursor == None:
+                    break
+            
+            return [{'items':itemList}]
+        else:
+            request_body = "query { boards (ids: " + str(board_id) + ",limit:25, page:0) { items { id name creator_id name state updated_at column_values { id title value text } group { id title }}}}"
+
+            get_board_items_request = self.make_request(request_body)
+            return get_board_items_request
 
     def create_board_item(self, board_id, item_name, group_id=None, column_values=None, create_labels_if_missing=False):
         """
@@ -450,7 +487,7 @@ class monday_endpoints:
         Gets a item by id.
         """
 
-        request_body = "query { items (ids: " + str(item_id) + ") { id, name, creator_id, name, state, updated_at column_values { id title value } group { id title }}}"
+        request_body = "query { items (ids: " + str(item_id) + ") { id, name, creator_id, name, state, updated_at column_values { id column { title } value } group { id title }}}"
         get_item_request = self.make_request(request_body)
         return get_item_request
 
