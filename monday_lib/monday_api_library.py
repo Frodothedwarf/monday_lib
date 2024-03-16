@@ -136,7 +136,7 @@ class monday_endpoints:
         Puts additional parameters in the mutation request body.
         """
 
-        string_keys = ["value","column_id", "column_values", "url", "config"]
+        string_keys = ["value","column_id", "column_values", "url", "config", "group_id"]
 
         parameter_dict = {key: value for key, value in parameter_dict.items() if value}
 
